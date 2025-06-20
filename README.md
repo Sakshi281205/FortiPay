@@ -52,8 +52,7 @@ FortiPay/
 - Write tests and documentation for new features
 - Follow code style and security best practices
 
-## Contacts
-- Project Lead: [Your Name]
+
 - GitHub: https://github.com/pixelPanda123/FortiPay
 
 ---
