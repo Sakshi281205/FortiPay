@@ -12,7 +12,7 @@ st.set_page_config(
     page_title="FortiPay - Enterprise Fraud Detection",
     page_icon="🛡️",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # Professional CSS styling
@@ -106,7 +106,6 @@ st.markdown("""
     }
     
     .stDeployButton { display: none; }
-    #MainMenu { visibility: hidden; }
     footer { visibility: hidden; }
     header { visibility: hidden; }
 </style>
@@ -226,6 +225,12 @@ def show_dashboard():
         <p style="color: #666; margin: 5px 0 0 0;">Real-time UPI Fraud Detection & Analytics</p>
     </div>
     """, unsafe_allow_html=True)
+    
+    # Add sidebar toggle button
+    col1, col2, col3 = st.columns([1, 3, 1])
+    with col1:
+        if st.button("📋 Toggle Sidebar", help="Click to show/hide the navigation sidebar"):
+            st.info("Use the hamburger menu (☰) in the top left corner to toggle the sidebar")
     
     # Generate sample data
     df = generate_sample_data()
@@ -369,50 +374,68 @@ def show_dashboard():
         st.rerun()
 
 def show_fraud_details():
-    """Detailed fraud analysis"""
+    """Comprehensive fraud investigation with detailed analysis"""
     if st.session_state.selected_fraud is None:
-        st.error("No fraud selected")
+        st.error("No transaction selected. Please go back to Fraud Analysis and click 'Investigate'.")
+        if st.button("← Back to Fraud Analysis"):
+            st.session_state.current_page = 'fraud_analysis'
+            st.rerun()
         return
-    
+
     fraud = st.session_state.selected_fraud
     
-    st.markdown("""
-    <div class="dashboard-header">
-        <h1 style="color: #333; margin: 0;">🔍 Fraud Investigation Details</h1>
-        <p style="color: #666; margin: 5px 0 0 0;">Comprehensive Analysis & Risk Assessment</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    if st.button("← Back to Dashboard"):
-        st.session_state.current_page = 'dashboard'
-        st.rerun()
-    
-    # Fraud details
     st.markdown(f"""
-    <div class="fraud-details">
-        <h2 style="color: #333; margin-bottom: 20px;">Transaction: {fraud['transaction_id']}</h2>
-        
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-            <div>
-                <h4 style="color: #667eea;">Transaction Details</h4>
-                <p><strong>From:</strong> {fraud['VPA_from']}</p>
-                <p><strong>To:</strong> {fraud['VPA_to']}</p>
-                <p><strong>Amount:</strong> ₹{fraud['amount']:,}</p>
-                <p><strong>PSP:</strong> {fraud['PSP']}</p>
-            </div>
-            <div>
-                <h4 style="color: #667eea;">Risk Assessment</h4>
-                <p><strong>Risk Score:</strong> {fraud['risk_score']:.3f}</p>
-                <p><strong>Confidence:</strong> {fraud['confidence']:.3f}</p>
-                <p><strong>Fraud Type:</strong> {fraud['fraud_type'].replace('_', ' ').title()}</p>
-            </div>
-        </div>
+    <div class="dashboard-header">
+        <h1 style='color: #333;'>🔍 Transaction Investigation</h1>
+        <p style="color: #666; margin: 5px 0 0 0;">Detailed Analysis: {fraud.get('transaction_id', 'N/A')}</p>
     </div>
     """, unsafe_allow_html=True)
-    
-    # Risk visualization
+
+    # Navigation buttons
+    col1, col2, col3 = st.columns([1, 3, 1])
+    with col1:
+        if st.button("← Back to Analysis", use_container_width=True):
+            st.session_state.current_page = 'fraud_analysis'
+            st.rerun()
+    with col3:
+        if st.button("🏠 Dashboard", use_container_width=True):
+            st.session_state.current_page = 'dashboard'
+            st.rerun()
+
+    # --- Transaction Overview Card ---
     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-    st.subheader("📊 Risk Score Visualization")
+    st.subheader("📋 Transaction Details")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        risk_level = "🔴 High Risk" if fraud['risk_score'] > 0.8 else "🟡 Medium Risk" if fraud['risk_score'] > 0.4 else "🟢 Low Risk"
+        st.metric("Risk Score", f"{fraud['risk_score']:.3f}", delta=risk_level)
+    with col2:
+        st.metric("Amount", f"₹{fraud['amount']:,}")
+    with col3:
+        st.metric("Confidence", f"{fraud['confidence']:.3f}")
+    with col4:
+        fraud_type_display = str(fraud['fraud_type']).replace('_', ' ').title()
+        st.metric("Fraud Type", fraud_type_display)
+    
+    # Transaction details in a nice format
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Sender Details:**")
+        st.info(f"**VPA:** {fraud['VPA_from']}")
+        st.info(f"**PSP:** {fraud['PSP']}")
+    with col2:
+        st.markdown("**Receiver Details:**")
+        st.info(f"**VPA:** {fraud['VPA_to']}")
+        st.info(f"**Transaction Type:** {fraud['transaction_type']}")
+    
+    st.markdown(f"**Timestamp:** {fraud['timestamp']}")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- Risk Score Visualization ---
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    st.subheader("📊 Risk Assessment Visualization")
     
     risk_percentage = fraud['risk_score'] * 100
     confidence_percentage = fraud['confidence'] * 100
@@ -444,65 +467,233 @@ def show_fraud_details():
         """, unsafe_allow_html=True)
     
     st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Fraud explanation
-    st.markdown('<div class="fraud-details">', unsafe_allow_html=True)
-    st.subheader("🔍 Fraud Detection Explanation")
+
+    # --- Fraud Pattern Explanation ---
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    st.subheader("🚨 Why is this transaction flagged?")
     
     if 'star' in fraud['fraud_type']:
         explanation = """
-        **Star-Shaped Fraud Pattern Detected:**
+        **🔴 Star Fraud Pattern Detected**
         
-        This transaction is part of a star-shaped fraud pattern where one central account 
-        is receiving funds from multiple different sources. This pattern indicates:
+        This transaction is part of a **star-shaped fraud pattern** where one central account (hub) is receiving funds from multiple sources (spokes). 
         
-        • Money Laundering: Attempting to obscure fund sources
-        • Fake Merchant Scams: Fraudulent merchants collecting payments
-        • Account Takeover: Compromised account being used as collection point
+        **Why it's suspicious:**
+        - **Money Laundering**: Centralizing funds from multiple sources to obscure origins
+        - **Account Takeover**: Multiple small transactions to test account access
+        - **Fake Merchant Scams**: Fraudulent merchants collecting payments from multiple victims
+        - **Structuring**: Breaking large amounts into smaller transactions to avoid detection
         
         **Risk Factors:**
-        - High number of incoming transactions to single account
+        - High in-degree (many incoming transactions to one account)
+        - Low out-degree (few outgoing transactions from the central account)
         - Unusual transaction timing patterns
         - Multiple unique senders to one recipient
+        
+        **Recommended Action:** Monitor the receiver account for unusual activity patterns.
         """
     elif 'cycle' in fraud['fraud_type']:
         explanation = """
-        **Cycle Fraud Pattern Detected:**
+        **🔄 Cycle Fraud Pattern Detected**
         
-        This transaction is part of a circular pattern where funds move in a loop (A→B→C→A). 
-        This indicates:
+        This transaction is part of a **cycle fraud pattern** where funds move in a circular path between accounts.
         
-        • Money Laundering: Artificial transaction flow
-        • Transaction Layering: Multiple hops to obscure tracing
-        • Structuring: Breaking large amounts into smaller transactions
+        **Why it's suspicious:**
+        - **Money Laundering**: Obscuring the origin of funds through artificial transaction flow
+        - **Wash Trading**: Creating fake transaction volume to manipulate metrics
+        - **Transaction Layering**: Multiple hops to make tracing difficult
+        - **Structuring**: Breaking large amounts into smaller transactions
         
         **Risk Factors:**
-        - Circular transaction flow
-        - Similar amounts in cycle
+        - Circular transaction flow (A→B→C→A)
+        - Similar amounts in cycle transactions
         - Rapid transaction timing
+        - Artificial transaction patterns
+        - Multiple accounts involved in short time
+        
+        **Recommended Action:** Investigate the entire transaction cycle for money laundering.
         """
-    else:
+    elif 'high_value' in fraud['fraud_type']:
         explanation = """
-        **High-Value Fraud Detected:**
+        **💰 High-Value Transaction Alert**
         
-        This transaction involves an unusually large amount that exceeds normal patterns.
+        This is a **high-value transaction** that significantly exceeds typical transaction amounts.
         
-        • Account Takeover: Unauthorized access
-        • Social Engineering: Victim tricked into large transfer
-        • Unauthorized Access: Compromised credentials
+        **Why it's suspicious:**
+        - **Account Takeover**: Large unauthorized transfers from compromised accounts
+        - **Social Engineering**: Victim tricked into making large transfers
+        - **Money Laundering**: Moving large sums quickly to obscure origins
+        - **Business Email Compromise**: Fraudulent requests for large payments
         
         **Risk Factors:**
         - Amount significantly higher than account history
         - Unusual transaction timing
         - High-risk recipient account
+        - Suspicious transaction context
+        - New or recently created recipient accounts
+        
+        **Recommended Action:** Verify the transaction with both parties immediately.
+        """
+    else:
+        explanation = """
+        **⚠️ High-Risk Transaction**
+        
+        This transaction has been flagged by our AI model due to suspicious patterns in its features and network connections.
+        
+        **Risk Factors:**
+        - Unusual transaction timing patterns
+        - Suspicious account behavior
+        - Network connection patterns
+        - Amount patterns inconsistent with account history
+        - High-risk recipient or sender patterns
+        
+        **Recommended Action:** Review transaction details and account history.
         """
     
     st.markdown(explanation)
     st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- Focused Transaction Graph ---
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    st.subheader(f"🔗 Focused Fraud Pattern Analysis")
     
-    # Action buttons
-    st.markdown('<div class="fraud-details">', unsafe_allow_html=True)
-    st.subheader("⚡ Recommended Actions")
+    # Explain what the focused graph shows
+    st.markdown("""
+    **What this graph shows:**
+    - 🔴 **Red nodes and edges**: The specific fraud transaction and accounts directly involved
+    - 🟠 **Orange nodes and edges**: Suspicious connections that explain why this transaction was flagged
+    - The graph focuses only on transactions that are part of the detected fraud pattern, not all account activity
+    """)
+    
+    # Get the full dataset to build the focused graph
+    df = generate_sample_data()
+    
+    # Create a focused graph showing this specific transaction and its immediate connections
+    focused_df = create_focused_transaction_graph(df, fraud)
+    
+    if not focused_df.empty:
+        # Create the network graph
+        G = create_focused_network_graph(focused_df, fraud)
+        fig = create_interactive_network_graph(G, 'Spring', fraud['fraud_type'])
+        
+        # Add custom title
+        fig.update_layout(
+            title=f"Focused Analysis: Transaction {fraud.get('transaction_id', 'N/A')}<br><sub>Showing fraud pattern and suspicious connections only</sub>",
+            title_x=0.5
+        )
+        
+        st.plotly_chart(fig, use_container_width=True, height=600)
+        
+        # Show graph statistics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Fraud-Related Accounts", len([n for n in G.nodes() if G.nodes[n].get('is_fraud_node', False)]))
+        with col2:
+            st.metric("Suspicious Connections", len([e for e in G.edges(data=True) if not e[2].get('is_fraud_edge', False)]))
+        with col3:
+            st.metric("Pattern Transactions", len(focused_df))
+        
+        # Explain the fraud pattern
+        st.markdown("**🔍 Pattern Analysis:**")
+        if 'star' in fraud['fraud_type']:
+            st.info("""
+            **Star Pattern Detected**: This transaction is part of a star-shaped fraud pattern where multiple accounts 
+            send money to one central account. The red nodes show the central account and the fraud transaction, 
+            while orange nodes show other suspicious incoming transactions to the central account.
+            """)
+        elif 'cycle' in fraud['fraud_type']:
+            st.info("""
+            **Cycle Pattern Detected**: This transaction is part of a circular money flow pattern. The red nodes show 
+            the accounts directly involved in the fraud transaction, while orange nodes show other transactions 
+            that form the cycle or are suspiciously connected.
+            """)
+        elif 'high_value' in fraud['fraud_type']:
+            st.info("""
+            **High-Value Pattern Detected**: This transaction involves an unusually large amount. The red nodes show 
+            the accounts in the fraud transaction, while orange nodes show other high-value or suspicious 
+            transactions involving these accounts.
+            """)
+        else:
+            st.info("""
+            **Suspicious Pattern Detected**: This transaction shows unusual behavior patterns. The red nodes show 
+            the accounts directly involved, while orange nodes show other suspicious transactions that 
+            help explain why this transaction was flagged.
+            """)
+        
+        # Edge weight analysis
+        st.markdown("**🔗 Connection Details:**")
+        edge_weights = []
+        for edge in G.edges(data=True):
+            edge_data = edge[2]
+            edge_weights.append({
+                'From': edge[0],
+                'To': edge[1],
+                'Amount': f"₹{edge_data.get('amount', 0):,}",
+                'Risk Score': f"{edge_data.get('risk_score', 0):.3f}",
+                'Connection Type': "🔴 Fraud Transaction" if edge_data.get('is_fraud_edge', False) else "🟠 Suspicious"
+            })
+        
+        if edge_weights:
+            edge_df = pd.DataFrame(edge_weights)
+            st.dataframe(edge_df, use_container_width=True)
+    else:
+        st.warning("Could not generate a focused graph for this transaction.")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- Fraud Alerts and Recommendations ---
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    st.subheader("🚨 Fraud Alerts & Recommendations")
+    
+    # Generate specific alerts for this transaction
+    alerts = generate_transaction_alerts(fraud, df)
+    
+    for alert in alerts:
+        alert_class = "alert-critical" if alert['severity'] == 'Critical' else "alert-high"
+        
+        st.markdown(f"""
+        <div class="alert-card {alert_class}">
+            <h4 style="margin: 0 0 10px 0; color: #333;">🚨 {alert['title']}</h4>
+            <p style="margin: 5px 0; color: #666;">{alert['description']}</p>
+            <p style="margin: 5px 0; color: #666;"><strong>Risk Score:</strong> {alert['risk_score']:.3f}</p>
+            <p style="margin: 5px 0; color: #666;"><strong>Confidence:</strong> {alert['confidence']:.3f}</p>
+            <p style="margin: 5px 0; color: #666;"><strong>Affected VPAs:</strong> {alert['affected_vpas']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- Action Recommendations ---
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    st.subheader("🎯 Recommended Actions")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown("**Immediate Actions:**")
+        st.markdown("- 🚨 Flag account for monitoring")
+        st.markdown("- 📞 Contact account holder")
+        st.markdown("- 🔒 Temporarily freeze if high risk")
+        st.markdown("- 📋 Document investigation findings")
+    
+    with col2:
+        st.markdown("**Investigation Steps:**")
+        st.markdown("- 📊 Review account history")
+        st.markdown("- 🔍 Check related transactions")
+        st.markdown("- 📋 Document findings")
+        st.markdown("- 🔗 Analyze network connections")
+    
+    with col3:
+        st.markdown("**Prevention:**")
+        st.markdown("- ⚠️ Set up alerts for similar patterns")
+        st.markdown("- 🔄 Monitor account activity")
+        st.markdown("- 📈 Update risk models")
+        st.markdown("- 🛡️ Implement additional security measures")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- Action Buttons ---
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    st.subheader("⚡ Take Action")
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -579,17 +770,23 @@ def show_fraud_analysis():
     
     df = generate_sample_data()
     
+    # Add transaction_id if it doesn't exist
+    if 'transaction_id' not in df.columns:
+        df['transaction_id'] = [f'TX{i:06d}' for i in range(len(df))]
+    
     # Filters
     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
     st.subheader("🔧 Analysis Filters")
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        fraud_type = st.selectbox("Fraud Pattern", ["All Patterns", "Star Fraud", "Cycle Fraud", "High Value Fraud"])
+        fraud_type = st.selectbox("Fraud Pattern", ["All Fraud Patterns", "All Transactions", "Star Fraud", "Cycle Fraud", "High Value Fraud", "Normal Transactions"])
     with col2:
-        risk_threshold = st.slider("Risk Threshold", 0.0, 1.0, 0.7)
+        risk_threshold = st.slider("Risk Threshold", 0.0, 1.0, 0.5)
     with col3:
-        max_nodes = st.slider("Max Graph Nodes", 10, 100, 30)
+        max_nodes = st.slider("Max Graph Nodes", 10, 200, 50)
+    with col4:
+        layout_option = st.selectbox("Graph Layout", ["Spring", "Circular", "Shell", "Random", "Kamada-Kawai"])
     
     st.markdown('</div>', unsafe_allow_html=True)
     
@@ -600,13 +797,50 @@ def show_fraud_analysis():
         filtered_df = df[df['fraud_type'].astype(str).str.contains('cycle', na=False)]
     elif fraud_type == "High Value Fraud":
         filtered_df = df[df['fraud_type'].astype(str).str.contains('high_value', na=False)]
-    else:
+    elif fraud_type == "Normal Transactions":
+        filtered_df = df[df['fraud_type'] == 'normal']
+    elif fraud_type == "All Fraud Patterns":
         filtered_df = df[df['fraud_type'] != 'normal']
+    else:  # "All Transactions"
+        filtered_df = df.copy()
     
     filtered_df = filtered_df[filtered_df['risk_score'] >= risk_threshold]
     
     if len(filtered_df) > max_nodes:
         filtered_df = filtered_df.head(max_nodes)
+    
+    # Show transaction table with investigation buttons
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    st.subheader(f"📋 Transactions ({len(filtered_df)} found)")
+    
+    if not filtered_df.empty:
+        # Display transactions in a table with investigation buttons
+        for idx, row in filtered_df.iterrows():
+            col1, col2, col3, col4, col5, col6, col7 = st.columns([2, 2, 1, 1, 1, 1, 1])
+            with col1:
+                st.write(f"**{row['VPA_from']}**")
+            with col2:
+                st.write(f"**{row['VPA_to']}**")
+            with col3:
+                st.write(f"₹{row['amount']:,}")
+            with col4:
+                risk_color = "🔴" if row['risk_score'] > 0.8 else "🟡" if row['risk_score'] > 0.6 else "🟢"
+                st.write(f"{risk_color} {row['risk_score']:.2f}")
+            with col5:
+                st.write(f"{row['confidence']:.2f}")
+            with col6:
+                fraud_type_display = str(row['fraud_type']).replace('_', ' ').title()
+                st.write(fraud_type_display)
+            with col7:
+                if st.button("🔍 Investigate", key=f"investigate_{row.get('transaction_id', idx)}"):
+                    st.session_state.selected_fraud = row
+                    st.session_state.current_page = 'fraud_details'
+                    st.rerun()
+            st.markdown("---")
+    else:
+        st.warning("No transactions match the current filter settings.")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
     
     if not filtered_df.empty:
         # Create GNN graph
@@ -630,156 +864,196 @@ def show_fraud_analysis():
         st.markdown('<div class="chart-container">', unsafe_allow_html=True)
         st.subheader("🕸️ GNN Transaction Network Graph")
         
-        # Graph layout options
-        layout_option = st.selectbox("Graph Layout", ["Spring", "Circular", "Shell", "Random"])
-        
         fig = create_interactive_network_graph(G, layout_option, fraud_type)
         st.plotly_chart(fig, use_container_width=True, height=600)
         st.markdown('</div>', unsafe_allow_html=True)
+
+def create_focused_transaction_graph(df, fraud_transaction):
+    """Create a focused dataset showing the specific fraud transaction and its suspicious connections"""
+    # Get the VPAs involved in the fraud transaction
+    fraud_vpa_from = fraud_transaction['VPA_from']
+    fraud_vpa_to = fraud_transaction['VPA_to']
+    fraud_amount = fraud_transaction['amount']
+    fraud_type = fraud_transaction['fraud_type']
+    
+    # Start with the fraud transaction itself
+    focused_df = df[
+        (df['VPA_from'] == fraud_vpa_from) & 
+        (df['VPA_to'] == fraud_vpa_to) &
+        (df['amount'] == fraud_amount)
+    ].copy()
+    
+    # Add suspicious connections based on fraud type
+    if 'star' in fraud_type:
+        # For star fraud, show the central account (receiver) and its multiple incoming transactions
+        central_account = fraud_vpa_to
+        star_transactions = df[
+            (df['VPA_to'] == central_account) & 
+            (df['risk_score'] > 0.5)  # Only high-risk incoming transactions
+        ].copy()
+        focused_df = pd.concat([focused_df, star_transactions], ignore_index=True)
         
-        # Pattern analysis
-        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-        st.subheader("📊 Pattern Analysis")
+    elif 'cycle' in fraud_type:
+        # For cycle fraud, show the transaction cycle
+        # Find transactions that form a cycle with the fraud transaction
+        cycle_transactions = df[
+            ((df['VPA_from'] == fraud_vpa_to) & (df['risk_score'] > 0.5)) |  # Outgoing from receiver
+            ((df['VPA_to'] == fraud_vpa_from) & (df['risk_score'] > 0.5))    # Incoming to sender
+        ].copy()
+        focused_df = pd.concat([focused_df, cycle_transactions], ignore_index=True)
         
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Centrality analysis
-            st.subheader("🔍 Centrality Analysis")
-            if G.number_of_nodes() > 0:
-                centrality = nx.degree_centrality(G)
-                top_central = sorted(centrality.items(), key=lambda x: x[1], reverse=True)[:10]
-                
-                centrality_df = pd.DataFrame(top_central, columns=['VPA', 'Centrality Score'])
-                st.dataframe(centrality_df, use_container_width=True)
-                
-                # Highlight suspicious central nodes
-                high_centrality = [node for node, score in top_central if score > 0.5]
-                if high_centrality:
-                    st.warning(f"⚠️ High centrality VPAs detected: {', '.join(high_centrality[:3])}")
-        
-        with col2:
-            # Connected components
-            st.subheader("🔗 Network Components")
-            components = list(nx.connected_components(G.to_undirected()))
-            st.write(f"Number of connected components: {len(components)}")
-            
-            if components:
-                largest_component = max(components, key=len)
-                st.write(f"Largest component size: {len(largest_component)}")
-                
-                # Detect star patterns
-                star_centers = detect_star_patterns(G)
-                if star_centers:
-                    st.error(f"🚨 Star fraud centers detected: {', '.join(star_centers[:3])}")
-                
-                # Detect cycles
-                cycles = detect_cycle_patterns(G)
-                if cycles:
-                    st.error(f"🔄 Cycle fraud patterns detected: {len(cycles)} cycles found")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Detailed fraud explanations
-        st.markdown('<div class="fraud-details">', unsafe_allow_html=True)
-        st.subheader("🔍 Fraud Pattern Explanations")
-        
-        if fraud_type == "Star Fraud" or fraud_type == "All Patterns":
-            st.markdown("""
-            **⭐ Star Fraud Pattern Analysis:**
-            
-            Star-shaped fraud occurs when one central account receives funds from multiple sources. 
-            This pattern is highly suspicious because:
-            
-            • **Money Laundering**: Attempting to obscure the source of funds by funneling through multiple accounts
-            • **Fake Merchant Scams**: Fraudulent merchants collecting payments from multiple victims
-            • **Account Takeover**: Compromised account being used as a collection point
-            • **Structuring**: Breaking large amounts into smaller transactions to avoid detection
-            
-            **Risk Indicators:**
-            - High in-degree (many incoming transactions)
-            - Low out-degree (few outgoing transactions)
-            - Unusual transaction timing patterns
-            - Multiple unique senders to one recipient
-            """)
-        
-        if fraud_type == "Cycle Fraud" or fraud_type == "All Patterns":
-            st.markdown("""
-            **🔄 Cycle Fraud Pattern Analysis:**
-            
-            Cycle fraud involves funds moving in circular patterns (A→B→C→A). This indicates:
-            
-            • **Money Laundering**: Artificial transaction flow to obscure fund origins
-            • **Transaction Layering**: Multiple hops to make tracing difficult
-            • **Structuring**: Breaking large amounts into smaller transactions
-            • **Smurfing**: Using multiple accounts to avoid detection thresholds
-            
-            **Risk Indicators:**
-            - Circular transaction flow
-            - Similar amounts in cycle
-            - Rapid transaction timing
-            - Artificial transaction patterns
-            - Multiple accounts involved in short time
-            """)
-        
-        if fraud_type == "High Value Fraud" or fraud_type == "All Patterns":
-            st.markdown("""
-            **💰 High Value Fraud Analysis:**
-            
-            High-value fraud involves unusually large transactions that exceed normal patterns:
-            
-            • **Account Takeover**: Unauthorized access to account for large transfers
-            • **Social Engineering**: Victim tricked into making large transfers
-            • **Unauthorized Access**: Compromised credentials used for large transactions
-            • **Business Email Compromise**: Fraudulent requests for large payments
-            
-            **Risk Indicators:**
-            - Amount significantly higher than account history
-            - Unusual transaction timing
-            - High-risk recipient account
-            - Suspicious transaction context
-            - New or recently created recipient accounts
-            """)
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Alert and action section
-        st.markdown('<div class="fraud-details">', unsafe_allow_html=True)
-        st.subheader("🚨 Fraud Alerts & Actions")
-        
-        # Generate alerts based on patterns
-        alerts = generate_fraud_alerts(G, filtered_df)
-        
-        for alert in alerts:
-            alert_class = "alert-critical" if alert['severity'] == 'Critical' else "alert-high"
-            
-            st.markdown(f"""
-            <div class="alert-card {alert_class}">
-                <h4 style="margin: 0 0 10px 0; color: #333;">🚨 {alert['title']}</h4>
-                <p style="margin: 5px 0; color: #666;">{alert['description']}</p>
-                <p style="margin: 5px 0; color: #666;"><strong>Risk Score:</strong> {alert['risk_score']:.3f}</p>
-                <p style="margin: 5px 0; color: #666;"><strong>Affected VPAs:</strong> {alert['affected_vpas']}</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                if st.button(f"🚫 Block {alert['type']}", key=f"block_{alert['id']}"):
-                    st.success(f"Blocked {alert['type']} transactions!")
-            with col2:
-                if st.button(f"📞 Alert Users", key=f"alert_{alert['id']}"):
-                    st.info(f"Alerted users for {alert['type']}!")
-            with col3:
-                if st.button(f"🔍 Investigate", key=f"investigate_{alert['id']}"):
-                    st.warning(f"Investigation initiated for {alert['type']}!")
-            with col4:
-                if st.button(f"📊 Report", key=f"report_{alert['id']}"):
-                    st.info(f"Report generated for {alert['type']}!")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
+    elif 'high_value' in fraud_type:
+        # For high-value fraud, show other high-value transactions involving these accounts
+        high_value_transactions = df[
+            ((df['VPA_from'] == fraud_vpa_from) | (df['VPA_to'] == fraud_vpa_from) |
+             (df['VPA_from'] == fraud_vpa_to) | (df['VPA_to'] == fraud_vpa_to)) &
+            (df['amount'] > fraud_amount * 0.5) &  # Transactions with similar high amounts
+            (df['risk_score'] > 0.4)  # Only risky transactions
+        ].copy()
+        focused_df = pd.concat([focused_df, high_value_transactions], ignore_index=True)
         
     else:
-        st.warning("No fraud patterns detected with current filters. Try adjusting the risk threshold or fraud type.")
+        # For other fraud types, show recent suspicious transactions involving these accounts
+        recent_suspicious = df[
+            ((df['VPA_from'] == fraud_vpa_from) | (df['VPA_to'] == fraud_vpa_from) |
+             (df['VPA_from'] == fraud_vpa_to) | (df['VPA_to'] == fraud_vpa_to)) &
+            (df['risk_score'] > 0.6) &  # Only high-risk transactions
+            (df.index != focused_df.index[0] if not focused_df.empty else True)  # Exclude the main fraud transaction
+        ].copy()
+        focused_df = pd.concat([focused_df, recent_suspicious], ignore_index=True)
+    
+    # Add a flag to highlight the specific fraud transaction
+    focused_df['is_fraud_transaction'] = (
+        (focused_df['VPA_from'] == fraud_vpa_from) & 
+        (focused_df['VPA_to'] == fraud_vpa_to) &
+        (focused_df['amount'] == fraud_amount)
+    )
+    
+    # Remove duplicates and limit to most relevant transactions
+    focused_df = focused_df.drop_duplicates().head(20)  # Limit to 20 most relevant transactions
+    
+    return focused_df
+
+def create_focused_network_graph(df, fraud_transaction):
+    """Create a NetworkX graph focused on the specific fraud transaction and its suspicious connections"""
+    G = nx.DiGraph()
+    
+    # Get the fraud transaction details
+    fraud_vpa_from = fraud_transaction['VPA_from']
+    fraud_vpa_to = fraud_transaction['VPA_to']
+    fraud_amount = fraud_transaction['amount']
+    fraud_type = fraud_transaction['fraud_type']
+    
+    # Add nodes and edges from the focused dataset
+    for _, row in df.iterrows():
+        # Add nodes with attributes
+        if not G.has_node(row['VPA_from']):
+            is_fraud_node = (row['VPA_from'] in [fraud_vpa_from, fraud_vpa_to])
+            G.add_node(row['VPA_from'], 
+                      risk_score=row['risk_score'],
+                      fraud_type=row['fraud_type'],
+                      account_type='sender',
+                      is_fraud_node=is_fraud_node,
+                      node_type='fraud_related' if is_fraud_node else 'suspicious')
+        
+        if not G.has_node(row['VPA_to']):
+            is_fraud_node = (row['VPA_to'] in [fraud_vpa_from, fraud_vpa_to])
+            G.add_node(row['VPA_to'], 
+                      risk_score=row['risk_score'],
+                      fraud_type=row['fraud_type'],
+                      account_type='receiver',
+                      is_fraud_node=is_fraud_node,
+                      node_type='fraud_related' if is_fraud_node else 'suspicious')
+        
+        # Add edge with transaction attributes
+        is_fraud_edge = (
+            row['VPA_from'] == fraud_vpa_from and 
+            row['VPA_to'] == fraud_vpa_to and
+            row['amount'] == fraud_amount
+        )
+        
+        # Determine edge type based on fraud pattern
+        edge_type = 'fraud_transaction' if is_fraud_edge else 'suspicious_connection'
+        
+        G.add_edge(row['VPA_from'], row['VPA_to'], 
+                  amount=row['amount'],
+                  timestamp=row['timestamp'],
+                  PSP=row['PSP'],
+                  transaction_type=row['transaction_type'],
+                  risk_score=row['risk_score'],
+                  confidence=row['confidence'],
+                  is_fraud_edge=is_fraud_edge,
+                  edge_type=edge_type)
+    
+    return G
+
+def generate_transaction_alerts(fraud_transaction, df):
+    """Generate specific alerts for a transaction"""
+    alerts = []
+    
+    # High risk score alert
+    if fraud_transaction['risk_score'] > 0.8:
+        alerts.append({
+            'title': 'Critical Risk Score',
+            'description': f'Transaction has extremely high risk score of {fraud_transaction["risk_score"]:.3f}',
+            'risk_score': fraud_transaction['risk_score'],
+            'confidence': fraud_transaction['confidence'],
+            'severity': 'Critical',
+            'affected_vpas': f"{fraud_transaction['VPA_from']} → {fraud_transaction['VPA_to']}"
+        })
+    
+    # High value alert
+    if fraud_transaction['amount'] > 10000:
+        alerts.append({
+            'title': 'High Value Transaction',
+            'description': f'Transaction amount ₹{fraud_transaction["amount"]:,} exceeds normal limits',
+            'risk_score': fraud_transaction['risk_score'],
+            'confidence': fraud_transaction['confidence'],
+            'severity': 'High',
+            'affected_vpas': f"{fraud_transaction['VPA_from']} → {fraud_transaction['VPA_to']}"
+        })
+    
+    # Fraud pattern alert
+    if 'star' in fraud_transaction['fraud_type']:
+        alerts.append({
+            'title': 'Star Fraud Pattern',
+            'description': 'Transaction is part of a star-shaped fraud pattern',
+            'risk_score': fraud_transaction['risk_score'],
+            'confidence': fraud_transaction['confidence'],
+            'severity': 'Critical',
+            'affected_vpas': f"{fraud_transaction['VPA_from']} → {fraud_transaction['VPA_to']}"
+        })
+    elif 'cycle' in fraud_transaction['fraud_type']:
+        alerts.append({
+            'title': 'Cycle Fraud Pattern',
+            'description': 'Transaction is part of a cycle fraud pattern',
+            'risk_score': fraud_transaction['risk_score'],
+            'confidence': fraud_transaction['confidence'],
+            'severity': 'Critical',
+            'affected_vpas': f"{fraud_transaction['VPA_from']} → {fraud_transaction['VPA_to']}"
+        })
+    elif 'high_value' in fraud_transaction['fraud_type']:
+        alerts.append({
+            'title': 'High Value Fraud',
+            'description': 'Transaction flagged as high-value fraud',
+            'risk_score': fraud_transaction['risk_score'],
+            'confidence': fraud_transaction['confidence'],
+            'severity': 'High',
+            'affected_vpas': f"{fraud_transaction['VPA_from']} → {fraud_transaction['VPA_to']}"
+        })
+    
+    # Low confidence alert
+    if fraud_transaction['confidence'] < 0.7:
+        alerts.append({
+            'title': 'Low Confidence Score',
+            'description': f'Low confidence score of {fraud_transaction["confidence"]:.3f} indicates uncertain prediction',
+            'risk_score': fraud_transaction['risk_score'],
+            'confidence': fraud_transaction['confidence'],
+            'severity': 'High',
+            'affected_vpas': f"{fraud_transaction['VPA_from']} → {fraud_transaction['VPA_to']}"
+        })
+    
+    return alerts
 
 def create_fraud_network_graph(df):
     """Create a NetworkX graph for fraud analysis"""
@@ -811,165 +1085,133 @@ def create_fraud_network_graph(df):
     return G
 
 def create_interactive_network_graph(G, layout_type, fraud_type):
-    """Create interactive network visualization"""
+    """Create interactive network visualization with focused fraud highlighting"""
     if layout_type == "Spring":
         pos = nx.spring_layout(G, k=2, iterations=50)
     elif layout_type == "Circular":
         pos = nx.circular_layout(G)
     elif layout_type == "Shell":
         pos = nx.shell_layout(G)
+    elif layout_type == "Kamada-Kawai":
+        pos = nx.kamada_kawai_layout(G)
     else:
         pos = nx.random_layout(G)
     
-    # Create edges
-    edge_x = []
-    edge_y = []
-    edge_text = []
+    # Create edges with different styles for fraud vs suspicious connections
+    fraud_edge_x = []
+    fraud_edge_y = []
+    fraud_edge_text = []
+    suspicious_edge_x = []
+    suspicious_edge_y = []
+    suspicious_edge_text = []
+    
     for edge in G.edges(data=True):
         x0, y0 = pos[edge[0]]
         x1, y1 = pos[edge[1]]
-        edge_x.extend([x0, x1, None])
-        edge_y.extend([y0, y1, None])
-        edge_text.extend([f"Amount: ₹{edge[2].get('amount', 'N/A')}<br>Risk: {edge[2].get('risk_score', 'N/A'):.2f}<br>PSP: {edge[2].get('PSP', 'N/A')}"] * 3)
+        edge_data = edge[2]
+        
+        edge_text = f"Amount: ₹{edge_data.get('amount', 'N/A')}<br>Risk: {edge_data.get('risk_score', 'N/A'):.2f}<br>PSP: {edge_data.get('PSP', 'N/A')}<br>Type: {edge_data.get('edge_type', 'N/A')}"
+        
+        if edge_data.get('is_fraud_edge', False):
+            fraud_edge_x.extend([x0, x1, None])
+            fraud_edge_y.extend([y0, y1, None])
+            fraud_edge_text.extend([edge_text] * 3)
+        else:
+            suspicious_edge_x.extend([x0, x1, None])
+            suspicious_edge_y.extend([y0, y1, None])
+            suspicious_edge_text.extend([edge_text] * 3)
 
-    edge_trace = go.Scatter(
-        x=edge_x, y=edge_y,
-        line=dict(width=2, color='#ff4757'),
+    # Fraud transaction edge (thick red)
+    fraud_edge_trace = go.Scatter(
+        x=fraud_edge_x, y=fraud_edge_y,
+        line=dict(width=4, color='#ff0000'),
         hoverinfo='text',
-        hovertext=edge_text,
-        mode='lines')
+        hovertext=fraud_edge_text,
+        mode='lines',
+        name='Fraud Transaction')
 
-    # Create nodes
-    node_x = []
-    node_y = []
-    node_text = []
-    node_colors = []
-    node_sizes = []
+    # Suspicious connection edges (thin orange)
+    suspicious_edge_trace = go.Scatter(
+        x=suspicious_edge_x, y=suspicious_edge_y,
+        line=dict(width=2, color='#ff6b35'),
+        hoverinfo='text',
+        hovertext=suspicious_edge_text,
+        mode='lines',
+        name='Suspicious Connections')
+
+    # Create nodes with different styles for fraud-related vs suspicious
+    fraud_node_x = []
+    fraud_node_y = []
+    fraud_node_text = []
+    suspicious_node_x = []
+    suspicious_node_y = []
+    suspicious_node_text = []
     
     for node in G.nodes():
         x, y = pos[node]
-        node_x.append(x)
-        node_y.append(y)
-        risk_score = G.nodes[node].get('risk_score', 0)
-        fraud_type = G.nodes[node].get('fraud_type', 'normal')
-        account_type = G.nodes[node].get('account_type', 'unknown')
+        node_data = G.nodes[node]
+        risk_score = node_data.get('risk_score', 0)
+        fraud_type = node_data.get('fraud_type', 'normal')
+        account_type = node_data.get('account_type', 'unknown')
+        node_type = node_data.get('node_type', 'normal')
         
-        node_text.append(f"VPA: {node}<br>Risk: {risk_score:.2f}<br>Type: {fraud_type}<br>Role: {account_type}")
-        node_colors.append(risk_score)
+        node_text = f"VPA: {node}<br>Risk: {risk_score:.2f}<br>Type: {fraud_type}<br>Role: {account_type}<br>Node Type: {node_type}"
         
-        # Size nodes based on importance
-        if 'star_fraud_center' in fraud_type:
-            node_sizes.append(25)
-        elif 'cycle' in fraud_type:
-            node_sizes.append(20)
+        if node_data.get('is_fraud_node', False):
+            fraud_node_x.append(x)
+            fraud_node_y.append(y)
+            fraud_node_text.append(node_text)
         else:
-            node_sizes.append(15)
+            suspicious_node_x.append(x)
+            suspicious_node_y.append(y)
+            suspicious_node_text.append(node_text)
 
-    node_trace = go.Scatter(
-        x=node_x, y=node_y,
+    # Fraud-related nodes (large red circles)
+    fraud_node_trace = go.Scatter(
+        x=fraud_node_x, y=fraud_node_y,
         mode='markers+text',
         hoverinfo='text',
-        text=node_text,
+        text=fraud_node_text,
         textposition="top center",
         marker=dict(
-            showscale=True,
-            colorscale='RdYlBu_r',
-            size=node_sizes,
-            color=node_colors,
-            colorbar=dict(
-                thickness=15,
-                title='Risk Score',
-                xanchor='left',
-                titleside='right'
-            )
-        ))
+            size=25,
+            color='#ff0000',
+            line=dict(width=2, color='#cc0000')
+        ),
+        name='Fraud-Related Accounts')
 
-    fig = go.Figure(data=[edge_trace, node_trace],
+    # Suspicious nodes (medium orange circles)
+    suspicious_node_trace = go.Scatter(
+        x=suspicious_node_x, y=suspicious_node_y,
+        mode='markers+text',
+        hoverinfo='text',
+        text=suspicious_node_text,
+        textposition="top center",
+        marker=dict(
+            size=15,
+            color='#ff6b35',
+            line=dict(width=1, color='#e55a2b')
+        ),
+        name='Suspicious Accounts')
+
+    fig = go.Figure(data=[fraud_edge_trace, suspicious_edge_trace, fraud_node_trace, suspicious_node_trace],
                    layout=go.Layout(
-                       title=f'{fraud_type} Network Analysis',
-                       showlegend=False,
+                       title=f'Focused Fraud Analysis: {fraud_type.replace("_", " ").title()}<br><sub>Red = Fraud Transaction, Orange = Suspicious Connections</sub>',
+                       showlegend=True,
                        hovermode='closest',
-                       margin=dict(b=20,l=5,r=5,t=40),
+                       margin=dict(b=20,l=5,r=5,t=60),
                        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                       yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
+                       yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                       legend=dict(
+                           x=0.02,
+                           y=0.98,
+                           bgcolor='rgba(255, 255, 255, 0.8)',
+                           bordercolor='rgba(0, 0, 0, 0.2)',
+                           borderwidth=1
+                       ))
                    )
     
     return fig
-
-def detect_star_patterns(G):
-    """Detect star-shaped fraud patterns"""
-    star_centers = []
-    for node in G.nodes():
-        in_degree = G.in_degree(node)
-        out_degree = G.out_degree(node)
-        
-        # Star pattern: high in-degree, low out-degree
-        if in_degree > 3 and out_degree < 2:
-            star_centers.append(node)
-    
-    return star_centers
-
-def detect_cycle_patterns(G):
-    """Detect cycle fraud patterns"""
-    try:
-        cycles = list(nx.simple_cycles(G))
-        return [cycle for cycle in cycles if len(cycle) >= 3]
-    except:
-        return []
-
-def generate_fraud_alerts(G, df):
-    """Generate fraud alerts based on patterns"""
-    alerts = []
-    alert_id = 0
-    
-    # Star fraud alerts
-    star_centers = detect_star_patterns(G)
-    for center in star_centers:
-        alert_id += 1
-        center_data = df[df['VPA_to'] == center]
-        alerts.append({
-            'id': alert_id,
-            'type': 'Star Fraud',
-            'title': f'Star Fraud Center Detected',
-            'description': f'Account {center} receiving from {len(center_data)} different sources',
-            'risk_score': center_data['risk_score'].mean(),
-            'severity': 'Critical' if center_data['risk_score'].mean() > 0.9 else 'High',
-            'affected_vpas': f'{center} + {len(center_data)} senders'
-        })
-    
-    # Cycle fraud alerts
-    cycles = detect_cycle_patterns(G)
-    for i, cycle in enumerate(cycles[:3]):  # Limit to 3 cycles
-        alert_id += 1
-        cycle_data = df[
-            (df['VPA_from'].isin(cycle)) & 
-            (df['VPA_to'].isin(cycle))
-        ]
-        alerts.append({
-            'id': alert_id,
-            'type': 'Cycle Fraud',
-            'title': f'Cycle Fraud Pattern {i+1}',
-            'description': f'Circular transaction pattern: {" → ".join(cycle)}',
-            'risk_score': cycle_data['risk_score'].mean() if not cycle_data.empty else 0.8,
-            'severity': 'Critical',
-            'affected_vpas': ', '.join(cycle)
-        })
-    
-    # High value fraud alerts
-    high_value = df[df['amount'] > 10000]
-    if not high_value.empty:
-        alert_id += 1
-        alerts.append({
-            'id': alert_id,
-            'type': 'High Value Fraud',
-            'title': 'High Value Transactions Detected',
-            'description': f'{len(high_value)} transactions above ₹10,000',
-            'risk_score': high_value['risk_score'].mean(),
-            'severity': 'High',
-            'affected_vpas': f'{len(high_value)} transactions'
-        })
-    
-    return alerts
 
 def load_css():
     """Load custom CSS styles"""
@@ -1139,6 +1381,166 @@ def load_css():
     }
     </style>
     """, unsafe_allow_html=True)
+
+def show_model_performance():
+    """Model performance and metrics page"""
+    st.markdown("""
+    <div class="dashboard-header">
+        <h1 style="color: #333; margin: 0;">📈 Model Performance</h1>
+        <p style="color: #666; margin: 5px 0 0 0;">GNN Model Metrics & Performance Analysis</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Model performance metrics
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    st.subheader("🎯 Model Accuracy Metrics")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Overall Accuracy", "94.2%", delta="+2.1%")
+    with col2:
+        st.metric("Precision", "91.8%", delta="+1.5%")
+    with col3:
+        st.metric("Recall", "96.5%", delta="+3.2%")
+    with col4:
+        st.metric("F1-Score", "94.1%", delta="+2.3%")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Performance over time
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    st.subheader("📊 Performance Trends")
+    
+    # Generate sample performance data
+    dates = pd.date_range(start='2024-01-01', end='2024-12-01', freq='M')
+    accuracy_data = [92.1, 93.2, 93.8, 94.1, 94.5, 94.2, 94.8, 95.1, 94.9, 94.7, 94.3, 94.2]
+    precision_data = [89.5, 90.2, 91.1, 91.5, 91.8, 91.2, 91.9, 92.1, 91.8, 91.5, 91.2, 91.8]
+    recall_data = [94.2, 95.1, 95.8, 96.1, 96.5, 96.2, 96.8, 97.1, 96.9, 96.7, 96.3, 96.5]
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=dates, y=accuracy_data, mode='lines+markers', name='Accuracy', line=dict(color='#667eea', width=3)))
+    fig.add_trace(go.Scatter(x=dates, y=precision_data, mode='lines+markers', name='Precision', line=dict(color='#ff6b6b', width=3)))
+    fig.add_trace(go.Scatter(x=dates, y=recall_data, mode='lines+markers', name='Recall', line=dict(color='#2ed573', width=3)))
+    
+    fig.update_layout(
+        title='Model Performance Over Time',
+        xaxis_title='Date',
+        yaxis_title='Percentage (%)',
+        hovermode='x unified',
+        height=400
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Fraud pattern detection accuracy
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    st.subheader("🔍 Fraud Pattern Detection Accuracy")
+    
+    pattern_data = {
+        'Pattern Type': ['Star Fraud', 'Cycle Fraud', 'High Value', 'Account Takeover', 'Money Laundering'],
+        'Detection Rate': [96.8, 94.2, 92.5, 95.1, 93.7],
+        'False Positives': [2.1, 3.2, 4.1, 2.8, 3.5],
+        'Response Time (ms)': [45, 52, 38, 41, 48]
+    }
+    
+    pattern_df = pd.DataFrame(pattern_data)
+    st.dataframe(pattern_df, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Model configuration
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    st.subheader("⚙️ Model Configuration")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Model Architecture:**")
+        st.markdown("- Graph Neural Network (GNN)")
+        st.markdown("- 3 Graph Convolutional Layers")
+        st.markdown("- 128 Hidden Dimensions")
+        st.markdown("- Dropout Rate: 0.3")
+        st.markdown("- Learning Rate: 0.001")
+        
+    with col2:
+        st.markdown("**Training Parameters:**")
+        st.markdown("- Batch Size: 32")
+        st.markdown("- Epochs: 100")
+        st.markdown("- Optimizer: Adam")
+        st.markdown("- Loss Function: Cross-Entropy")
+        st.markdown("- Validation Split: 20%")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+def show_transaction_graph():
+    """Global transaction graph visualization"""
+    st.markdown("""
+    <div class="dashboard-header">
+        <h1 style="color: #333; margin: 0;">🕸️ Transaction Network Graph</h1>
+        <p style="color: #666; margin: 5px 0 0 0;">Global Transaction Network Visualization</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Graph controls
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    st.subheader("🔧 Graph Controls")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        layout_type = st.selectbox("Layout Algorithm", ["Spring", "Circular", "Shell", "Kamada-Kawai", "Random"])
+    with col2:
+        max_nodes = st.slider("Max Nodes to Display", 50, 500, 200)
+    with col3:
+        risk_threshold = st.slider("Risk Score Threshold", 0.0, 1.0, 0.5, 0.1)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Generate sample data
+    df = generate_sample_data()
+    
+    # Filter data based on risk threshold
+    filtered_df = df[df['risk_score'] >= risk_threshold].head(max_nodes)
+    
+    if not filtered_df.empty:
+        # Create network graph
+        G = create_fraud_network_graph(filtered_df)
+        fig = create_interactive_network_graph(G, layout_type, 'Global Network')
+        
+        # Update title
+        fig.update_layout(
+            title=f'Global Transaction Network (Risk ≥ {risk_threshold})<br><sub>Showing {len(filtered_df)} high-risk transactions</sub>',
+            title_x=0.5
+        )
+        
+        st.plotly_chart(fig, use_container_width=True, height=700)
+        
+        # Graph statistics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Nodes", len(G.nodes()))
+        with col2:
+            st.metric("Total Edges", len(G.edges()))
+        with col3:
+            st.metric("High Risk Nodes", len([n for n in G.nodes() if G.nodes[n].get('risk_score', 0) > 0.8]))
+        with col4:
+            st.metric("Average Risk", f"{sum(G.nodes[n].get('risk_score', 0) for n in G.nodes()) / len(G.nodes()):.3f}")
+        
+        # Node details table
+        st.markdown("**📋 Node Details:**")
+        node_details = []
+        for node in list(G.nodes())[:20]:  # Show first 20 nodes
+            node_data = G.nodes[node]
+            node_details.append({
+                'VPA': node,
+                'Risk Score': f"{node_data.get('risk_score', 0):.3f}",
+                'Fraud Type': node_data.get('fraud_type', 'normal'),
+                'Account Type': node_data.get('account_type', 'unknown')
+            })
+        
+        if node_details:
+            node_df = pd.DataFrame(node_details)
+            st.dataframe(node_df, use_container_width=True)
+    else:
+        st.warning("No transactions found with the selected risk threshold.")
 
 def main():
     """Main application logic"""
