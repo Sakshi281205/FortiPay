@@ -147,17 +147,128 @@ def predict_fraud(G: nx.DiGraph, known_vpas=None, node_model=None, edge_model=No
     }
 
 # -----------------------------
-# 5. Example Usage
+# 5. Use Case Specific Detectors
+# -----------------------------
+def detect_qr_swap_fraud(G: nx.DiGraph, shopkeeper_node: str, current_timestamp: int, lookback_days=30, suspicion_days=2):
+    """
+    Detects potential QR code swap fraud for a specific shopkeeper.
+
+    Args:
+        G (nx.DiGraph): The full transaction graph. Edges need a 'timestamp' attribute.
+        shopkeeper_node (str): The node ID of the legitimate shopkeeper.
+        current_timestamp (int): The current unix timestamp for time-window calculations.
+        lookback_days (int): How many days back to look to identify regular customers.
+        suspicion_days (int): The most recent number of days to check for the fraud pattern.
+
+    Returns:
+        A dictionary with the suspected fraudster and the affected customers, or None.
+    """
+    lookback_window_start = current_timestamp - (lookback_days * 86400)
+    suspicion_window_start = current_timestamp - (suspicion_days * 86400)
+
+    # 1. Identify regular customers from the lookback period (before the suspicion window)
+    regular_customers = set()
+    for u, v, attr in G.in_edges(shopkeeper_node, data=True):
+        if lookback_window_start <= attr['timestamp'] < suspicion_window_start:
+            regular_customers.add(u)
+
+    if not regular_customers:
+        print(f"No regular customers found for {shopkeeper_node} in the lookback period.")
+        return None
+
+    # 2. Find regulars who have stopped transacting with the shopkeeper recently
+    lapsed_regulars = set()
+    for customer in regular_customers:
+        recent_tx = any(
+            suspicion_window_start <= attr['timestamp']
+            for u, v, attr in G.out_edges(customer, data=True)
+            if v == shopkeeper_node
+        )
+        if not recent_tx:
+            lapsed_regulars.add(customer)
+
+    if not lapsed_regulars:
+        print("All regular customers have continued to transact. No signs of QR swap.")
+        return None
+
+    # 3. Find who these lapsed regulars are paying now
+    potential_suspects = {}
+    for customer in lapsed_regulars:
+        for u, v, attr in G.out_edges(customer, data=True):
+            # Check if the transaction is recent and not to the original shopkeeper
+            if v != shopkeeper_node and suspicion_window_start <= attr['timestamp']:
+                # Check for no prior history with this new payee
+                has_prior_history = any(
+                    attr_hist['timestamp'] < suspicion_window_start
+                    for _, _, attr_hist in G.out_edges(customer, data=True)
+                    if v == v
+                )
+                if not has_prior_history:
+                    potential_suspects.setdefault(v, set()).add(customer)
+
+    # 4. Identify the most likely suspect
+    if not potential_suspects:
+        print("Lapsed regulars are not transacting with any single new entity.")
+        return None
+
+    # The suspect is the one who received funds from the most lapsed regulars
+    suspect_node, paid_by = max(potential_suspects.items(), key=lambda item: len(item[1]))
+
+    # Rule: at least 2 regulars must have paid the suspect to be considered a pattern
+    if len(paid_by) < 2:
+        print("No single new entity is receiving payments from multiple lapsed regulars.")
+        return None
+
+    return {
+        'shopkeeper_node': shopkeeper_node,
+        'suspect_node': suspect_node,
+        'affected_customers': list(paid_by),
+        'explanation': f"Potential QR Swap: {len(paid_by)} regular customers of '{shopkeeper_node}' have stopped paying them and recently paid new account '{suspect_node}', with whom they have no prior history."
+    }
+
+# -----------------------------
+# 6. Example Usage
 # -----------------------------
 if __name__ == "__main__":
-    # Example: create a toy transaction graph
-    G = nx.DiGraph()
-    G.add_node('A', vpa='merchant@upi', account_age=2, is_verified=True)
-    G.add_node('B', vpa='user1@upi', account_age=0.1, is_verified=False)
-    G.add_node('C', vpa='user2@upi', account_age=0.2, is_verified=False)
-    G.add_edge('B', 'A', amount=1000, timestamp=1, psp_flag=0, type=1)
-    G.add_edge('C', 'A', amount=500, timestamp=2, psp_flag=0, type=1)
-    G.add_edge('A', 'B', amount=100, timestamp=3, psp_flag=1, type=2)
+    # --- Original GNN prediction example ---
+    G_gnn = nx.DiGraph()
+    G_gnn.add_node('A', vpa='merchant@upi', account_age=2, is_verified=True)
+    G_gnn.add_node('B', vpa='user1@upi', account_age=0.1, is_verified=False)
+    G_gnn.add_node('C', vpa='user2@upi', account_age=0.2, is_verified=False)
+    G_gnn.add_edge('B', 'A', amount=1000, timestamp=1667281800, psp_flag=0, type=1)
+    G_gnn.add_edge('C', 'A', amount=500, timestamp=1667281801, psp_flag=0, type=1)
+    G_gnn.add_edge('A', 'B', amount=100, timestamp=1667281802, psp_flag=1, type=2)
     known_vpas = ['merchant@upi']
-    result = predict_fraud(G, known_vpas)
-    print(result) 
+
+    print("--- GNN Fraud Prediction ---")
+    result = predict_fraud(G_gnn, known_vpas)
+    print(result)
+    print("-" * 20)
+
+    # --- QR Swap Fraud Example ---
+    G_qr = nx.DiGraph()
+    shopkeeper = 'Shopkeeper_Real_VPA'
+    fraudster = 'Fraudster_New_VPA'
+    regulars = [f'Regular_{i}' for i in range(5)]
+    current_time = 1672531200 # Jan 1, 2023
+
+    # Regulars paid shopkeeper in the past (e.g., 15 days ago)
+    for r in regulars:
+        G_qr.add_edge(r, shopkeeper, timestamp=current_time - 15 * 86400)
+
+    # Now, regulars pay the fraudster instead (e.g., 1 day ago)
+    for r in regulars:
+        G_qr.add_edge(r, fraudster, timestamp=current_time - 1 * 86400)
+    
+    # One regular also pays the shopkeeper (to show it can handle imperfect patterns)
+    G_qr.add_edge('Regular_0', shopkeeper, timestamp=current_time - 1 * 86400)
+
+    print("\n--- QR Swap Fraud Detection ---")
+    qr_fraud_result = detect_qr_swap_fraud(
+        G_qr,
+        shopkeeper_node=shopkeeper,
+        current_timestamp=current_time
+    )
+    if qr_fraud_result:
+        print(qr_fraud_result['explanation'])
+        # print(qr_fraud_result) 
