@@ -161,6 +161,7 @@ def show_login_page():
 def generate_sample_data():
     """Generate sample transaction data with fraud patterns"""
     np.random.seed(42)
+    random.seed(42)  # for reproducibility
     n_transactions = 1000
     
     # Generate VPAs
@@ -305,33 +306,39 @@ def show_dashboard():
     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
     st.subheader("📈 Transaction Trends Over Time")
     
-    time_data = df.groupby(df['timestamp'].dt.date).agg({
-        'transaction_id': 'count',
-        'fraud_type': lambda x: (x != 'normal').sum()
-    }).reset_index()
+    # Calculate daily counts for normal and fraud transactions
+    df['date'] = df['timestamp'].dt.date
+    daily_counts = df.groupby(['date', 'fraud_type']).size().unstack(fill_value=0)
     
-    time_data.columns = ['date', 'transaction_count', 'fraud_count']
+    if 'normal' not in daily_counts.columns:
+        daily_counts['normal'] = 0
+        
+    fraud_cols = [col for col in daily_counts.columns if col != 'normal']
+    daily_counts['fraud'] = daily_counts[fraud_cols].sum(axis=1)
+    
+    time_data = daily_counts[['normal', 'fraud']].reset_index()
     
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=time_data['date'],
-        y=time_data['transaction_count'],
-        name='Total Transactions',
+        y=time_data['normal'],
+        name='Normal Transactions',
         marker_color='#667eea'
     ))
     fig.add_trace(go.Bar(
         x=time_data['date'],
-        y=time_data['fraud_count'],
+        y=time_data['fraud'],
         name='Fraud Transactions',
         marker_color='#ff4757'
     ))
     
     fig.update_layout(
-        title="Transaction Volume vs Fraud Detection",
+        title="Transaction Volume: Normal vs Fraud",
         xaxis_title="Date",
         yaxis_title="Count",
-        barmode='group',
-        height=400
+        barmode='stack',
+        height=400,
+        legend=dict(x=0.01, y=0.99, bordercolor='Gainsboro', borderwidth=1)
     )
     st.plotly_chart(fig, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -386,6 +393,14 @@ def show_fraud_details():
     if st.button("← Back to Dashboard"):
         st.session_state.current_page = 'dashboard'
         st.rerun()
+    
+    # --- SUMMARY BOX ---
+    st.markdown(f"""
+    <div class="dashboard-header">
+        <h2 style='color: #ff4757;'>🚨 Fraud Summary</h2>
+        <p><b>Risk Score:</b> {fraud['risk_score']:.2f} &nbsp; | &nbsp; <b>Type:</b> {fraud['fraud_type'].replace('_', ' ').title()} &nbsp; | &nbsp; <b>Amount:</b> ₹{fraud['amount']:,}</p>
+    </div>
+    """, unsafe_allow_html=True)
     
     # Fraud details
     st.markdown(f"""
@@ -445,59 +460,24 @@ def show_fraud_details():
     
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Fraud explanation
+    # --- EXPLANATION ---
     st.markdown('<div class="fraud-details">', unsafe_allow_html=True)
-    st.subheader("🔍 Fraud Detection Explanation")
-    
+    st.subheader("📝 Why is this flagged as fraud?")
     if 'star' in fraud['fraud_type']:
         explanation = """
-        **Star-Shaped Fraud Pattern Detected:**
-        
-        This transaction is part of a star-shaped fraud pattern where one central account 
-        is receiving funds from multiple different sources. This pattern indicates:
-        
-        • Money Laundering: Attempting to obscure fund sources
-        • Fake Merchant Scams: Fraudulent merchants collecting payments
-        • Account Takeover: Compromised account being used as collection point
-        
-        **Risk Factors:**
-        - High number of incoming transactions to single account
-        - Unusual transaction timing patterns
-        - Multiple unique senders to one recipient
+        This transaction is part of a **star-shaped fraud pattern**: one account is receiving funds from many sources. This is suspicious for money laundering, fake merchant scams, or account takeover.
         """
     elif 'cycle' in fraud['fraud_type']:
         explanation = """
-        **Cycle Fraud Pattern Detected:**
-        
-        This transaction is part of a circular pattern where funds move in a loop (A→B→C→A). 
-        This indicates:
-        
-        • Money Laundering: Artificial transaction flow
-        • Transaction Layering: Multiple hops to obscure tracing
-        • Structuring: Breaking large amounts into smaller transactions
-        
-        **Risk Factors:**
-        - Circular transaction flow
-        - Similar amounts in cycle
-        - Rapid transaction timing
+        This transaction is part of a **cycle fraud pattern**: funds are moving in a loop between accounts. This is often used for money laundering or to obscure fund origins.
+        """
+    elif 'high_value' in fraud['fraud_type']:
+        explanation = """
+        This is a **high value transaction** that is much larger than typical amounts, which is a common sign of fraud, account takeover, or social engineering.
         """
     else:
-        explanation = """
-        **High-Value Fraud Detected:**
-        
-        This transaction involves an unusually large amount that exceeds normal patterns.
-        
-        • Account Takeover: Unauthorized access
-        • Social Engineering: Victim tricked into large transfer
-        • Unauthorized Access: Compromised credentials
-        
-        **Risk Factors:**
-        - Amount significantly higher than account history
-        - Unusual transaction timing
-        - High-risk recipient account
-        """
-    
-    st.markdown(explanation)
+        explanation = "This transaction is flagged due to unusual risk factors."
+    st.info(explanation)
     st.markdown('</div>', unsafe_allow_html=True)
     
     # Action buttons
@@ -522,6 +502,19 @@ def show_fraud_details():
         if st.button("📊 Generate Report", use_container_width=True):
             st.info("Report generated and saved.")
     
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- LOCAL GRAPH ---
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    st.subheader("🔗 Local Transaction Graph")
+    # Show a local subgraph for this fraud (1-hop neighborhood)
+    df = generate_sample_data()  # Use the same function to get the data
+    # Find all transactions involving this VPA (from or to)
+    vpa = fraud['VPA_to']
+    local_df = df[(df['VPA_from'] == vpa) | (df['VPA_to'] == vpa)]
+    local_G = create_fraud_network_graph(local_df)
+    fig = create_interactive_network_graph(local_G, 'Spring', fraud['fraud_type'])
+    st.plotly_chart(fig, use_container_width=True, height=400)
     st.markdown('</div>', unsafe_allow_html=True)
 
 def show_sidebar():
@@ -778,8 +771,92 @@ def show_fraud_analysis():
         
         st.markdown('</div>', unsafe_allow_html=True)
         
+        # --- SUMMARY DASHBOARD ---
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        st.subheader("📝 Fraud Pattern Summary Dashboard")
+        
+        # Calculate summary stats from the original dataset, not just filtered
+        df_original = generate_sample_data()
+        total_star = len(df_original[df_original['fraud_type'].astype(str).str.contains('star', na=False)])
+        total_cycle = len(df_original[df_original['fraud_type'].astype(str).str.contains('cycle', na=False)])
+        total_high_value = len(df_original[df_original['fraud_type'].astype(str).str.contains('high_value', na=False)])
+        
+        # Get top risky from filtered data if available, otherwise from original
+        if not filtered_df.empty:
+            top_risky = filtered_df.sort_values('risk_score', ascending=False).head(5)
+            most_common = filtered_df['fraud_type'].value_counts().idxmax() if not filtered_df.empty else 'None'
+        else:
+            top_risky = df_original.sort_values('risk_score', ascending=False).head(5)
+            most_common = df_original['fraud_type'].value_counts().idxmax() if not df_original.empty else 'None'
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Star Patterns", total_star)
+        with col2:
+            st.metric("Cycle Patterns", total_cycle)
+        with col3:
+            st.metric("High Value Patterns", total_high_value)
+        
+        st.markdown("**Top 5 Risky VPAs:**")
+        if not top_risky.empty:
+            st.table(top_risky[['VPA_from', 'VPA_to', 'risk_score', 'fraud_type']])
+        else:
+            st.write("No risky VPAs detected.")
+        
+        st.markdown(f"**Most Common Fraud Type:** {most_common.replace('_', ' ').title()}")
+        
+        # English summary
+        summary_text = f"""
+        **Summary of Detected Patterns:**
+        - {total_star} star-shaped fraud patterns detected (multiple senders to one receiver).
+        - {total_cycle} cycle fraud patterns detected (circular fund movement).
+        - {total_high_value} high value frauds detected (unusually large transactions).
+        - The most common fraud type is **{most_common.replace('_', ' ').title()}**.
+        
+        **Current Filter Results:** {len(filtered_df)} transactions match your current filters.
+        """
+        st.info(summary_text)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
     else:
         st.warning("No fraud patterns detected with current filters. Try adjusting the risk threshold or fraud type.")
+        
+        # Show summary even when no patterns detected
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        st.subheader("📝 Overall Fraud Pattern Summary")
+        
+        df_original = generate_sample_data()
+        total_star = len(df_original[df_original['fraud_type'].astype(str).str.contains('star', na=False)])
+        total_cycle = len(df_original[df_original['fraud_type'].astype(str).str.contains('cycle', na=False)])
+        total_high_value = len(df_original[df_original['fraud_type'].astype(str).str.contains('high_value', na=False)])
+        top_risky = df_original.sort_values('risk_score', ascending=False).head(5)
+        most_common = df_original['fraud_type'].value_counts().idxmax() if not df_original.empty else 'None'
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Star Patterns", total_star)
+        with col2:
+            st.metric("Cycle Patterns", total_cycle)
+        with col3:
+            st.metric("High Value Patterns", total_high_value)
+        
+        st.markdown("**Top 5 Risky VPAs:**")
+        if not top_risky.empty:
+            st.table(top_risky[['VPA_from', 'VPA_to', 'risk_score', 'fraud_type']])
+        
+        st.markdown(f"**Most Common Fraud Type:** {most_common.replace('_', ' ').title()}")
+        
+        summary_text = f"""
+        **Overall Summary:**
+        - {total_star} star-shaped fraud patterns detected (multiple senders to one receiver).
+        - {total_cycle} cycle fraud patterns detected (circular fund movement).
+        - {total_high_value} high value frauds detected (unusually large transactions).
+        - The most common fraud type is **{most_common.replace('_', ' ').title()}**.
+        
+        **Note:** No transactions match your current filters. Try lowering the risk threshold or selecting "All Patterns".
+        """
+        st.info(summary_text)
+        st.markdown('</div>', unsafe_allow_html=True)
 
 def create_fraud_network_graph(df):
     """Create a NetworkX graph for fraud analysis"""
