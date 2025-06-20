@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -9,82 +10,106 @@ from visualize_graph import create_user_centric_visualization
 
 # Page configuration
 st.set_page_config(
-    page_title="FortiPay - Advanced UPI Fraud Detection",
+    page_title="FortiPay - Enterprise Fraud Detection",
     page_icon="🛡️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for enhanced styling
+# Professional CSS styling
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.5rem;
-        color: #1f77b4;
-        text-align: center;
-        margin-bottom: 2rem;
-        background: linear-gradient(90deg, #1f77b4, #ff7f0e);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-    .metric-card {
+    .main {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 1.5rem;
-        border-radius: 1rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        margin: 0.5rem 0;
+        padding: 0;
     }
+    
+    .stApp {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    .login-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    .login-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        padding: 40px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        text-align: center;
+        max-width: 400px;
+        width: 100%;
+    }
+    
+    .dashboard-header {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 20px;
+        border-radius: 15px;
+        margin-bottom: 20px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    }
+    
+    .metric-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 15px;
+        padding: 20px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        border-left: 5px solid #667eea;
+        transition: all 0.3s ease;
+    }
+    
+    .chart-container {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 15px;
+        padding: 20px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+    }
+    
+    .alert-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 15px;
+        padding: 15px;
+        margin: 10px 0;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        border-left: 5px solid;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+    
     .alert-critical {
-        background: linear-gradient(135deg, #ff6b6b, #ee5a52);
-        border-left: 6px solid #d32f2f;
-        color: white;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 0.5rem 0;
+        border-left-color: #ff4757;
+        background: linear-gradient(135deg, rgba(255, 71, 87, 0.1), rgba(255, 71, 87, 0.05));
     }
+    
     .alert-high {
-        background: linear-gradient(135deg, #ffa726, #ff9800);
-        border-left: 6px solid #f57c00;
-        color: white;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 0.5rem 0;
+        border-left-color: #ffa502;
+        background: linear-gradient(135deg, rgba(255, 165, 2, 0.1), rgba(255, 165, 2, 0.05));
     }
-    .alert-medium {
-        background: linear-gradient(135deg, #ffd54f, #ffc107);
-        border-left: 6px solid #ff8f00;
-        color: #333;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 0.5rem 0;
+    
+    .fraud-details {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+        margin: 20px 0;
     }
-    .alert-low {
-        background: linear-gradient(135deg, #81c784, #4caf50);
-        border-left: 6px solid #388e3c;
-        color: white;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 0.5rem 0;
-    }
-    .fraud-explanation {
-        background: #f8f9fa;
-        border: 2px solid #dee2e6;
-        border-radius: 0.5rem;
-        padding: 1rem;
-        margin: 1rem 0;
-    }
-    .confidence-bar {
-        background: #e9ecef;
-        border-radius: 0.25rem;
-        height: 20px;
-        margin: 0.5rem 0;
-    }
-    .confidence-fill {
-        height: 100%;
-        border-radius: 0.25rem;
-        transition: width 0.3s ease;
-    }
+    
+    .stDeployButton { display: none; }
+    #MainMenu { visibility: hidden; }
+    footer { visibility: hidden; }
+    header { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -164,7 +189,7 @@ def show_fraud_investigation():
                 if html_path and os.path.exists(html_path):
                     with open(html_path, 'r', encoding='utf-8') as f:
                         source_code = f.read()
-                    st.components.v1.html(source_code, height=800, scrolling=True)
+                    components.html(source_code, height=800, scrolling=True)
                 else:
                     st.warning("No transaction data found for this user in the selected time window.")
         else:
