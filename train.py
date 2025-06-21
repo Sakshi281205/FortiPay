@@ -58,22 +58,26 @@ def train(epochs=100, lr=0.01):
     edge_index = torch.tensor([[node_id_map[u], node_id_map[v]] for u, v in G.edges()], dtype=torch.long).t().contiguous()
     
     # --- Feature Extraction ---
-    # Node features: degrees and engineered stats (scaled)
-    in_degrees = torch.tensor([G.in_degree(n) for n in G.nodes()], dtype=torch.float).view(-1, 1)
-    out_degrees = torch.tensor([G.out_degree(n) for n in G.nodes()], dtype=torch.float).view(-1, 1)
-    
     # Get engineered features from nodes_df and align them with the graph's node order
     node_feature_cols = [
         'sent_mean', 'sent_median', 'sent_std', 
-        'received_mean', 'received_median', 'received_std', 'account_age_days'
+        'received_mean', 'received_median', 'received_std', 
+        'account_age_days',
+        # New bust-out fraud features
+        'historical_tx_frequency', 'inflow_spike_ratio', 'fund_dispersal_velocity_seconds'
     ]
     engineered_features_df = nodes_df.set_index('UPI_ID').loc[[n for n in G.nodes()]]
+    
+    # Check for missing columns and fill with 0 if necessary
+    for col in node_feature_cols:
+        if col not in engineered_features_df.columns:
+            engineered_features_df[col] = 0
+            
     engineered_features = torch.tensor(engineered_features_df[node_feature_cols].values, dtype=torch.float)
 
-    # Combine all node features and scale them
-    node_features_combined = torch.cat([in_degrees, out_degrees, engineered_features], dim=1)
+    # Scale the node features
     node_scaler = StandardScaler()
-    node_features = torch.tensor(node_scaler.fit_transform(node_features_combined), dtype=torch.float)
+    node_features = torch.tensor(node_scaler.fit_transform(engineered_features), dtype=torch.float)
 
     # Re-order edges_df to match the graph's internal edge order before creating tensors
     edge_list_for_ordering = list(G.edges(data=True))
@@ -83,6 +87,7 @@ def train(epochs=100, lr=0.01):
     )
 
     # Edge features: amount and time delta (scaled)
+    # Note: We are now using only 2 edge features. If more are added, update EdgeGNN input size.
     amounts = torch.tensor(edge_order_df['Amount_INR'].values, dtype=torch.float).view(-1, 1)
     time_deltas = torch.tensor(edge_order_df['time_since_last_tx_seconds'].values, dtype=torch.float).view(-1, 1)
     

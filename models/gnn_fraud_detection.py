@@ -75,7 +75,7 @@ def fuzzy_vpa_score(vpa, known_vpas, threshold=85):
 # 3. GNN Models
 # -----------------------------
 class NodeGNN(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels):
+    def __init__(self, in_channels=10, hidden_channels=16, out_channels=2):
         super().__init__()
         self.conv1 = GATConv(in_channels, hidden_channels)
         self.conv2 = GATConv(hidden_channels, out_channels)
@@ -85,7 +85,7 @@ class NodeGNN(torch.nn.Module):
         return x
 
 class EdgeGNN(torch.nn.Module):
-    def __init__(self, node_in, edge_in, hidden, out):
+    def __init__(self, node_in=10, edge_in=4, hidden=16, out=2):
         super().__init__()
         self.node_encoder = torch.nn.Linear(node_in, hidden)
         self.edge_encoder = torch.nn.Linear(edge_in, hidden)
@@ -102,27 +102,25 @@ class EdgeGNN(torch.nn.Module):
 # -----------------------------
 # 4. Main Pipeline
 # -----------------------------
-def predict_fraud(G: nx.DiGraph, known_vpas=None, node_model=None, edge_model=None):
+def predict_fraud(data, known_vpas=None, node_model=None, edge_model=None):
     """
-    Takes a NetworkX DiGraph of transactions and outputs risk scores and fraud predictions.
-    known_vpas: list of trusted merchant VPAs for spoof detection
-    node_model, edge_model: pretrained GNN models (if None, random init)
+    Takes a PyG Data object and outputs risk scores and fraud predictions.
     """
     if known_vpas is None:
         known_vpas = []
-    node_features, edge_features, edge_index, node_id_map = compute_graph_features(G)
+    node_features, edge_features, edge_index, node_id_map = compute_graph_features(nx.DiGraph())
     data = Data(x=node_features, edge_index=edge_index, edge_attr=edge_features)
 
     # Node classification (e.g., suspicious account)
     if node_model is None:
-        node_model = NodeGNN(node_features.shape[1], 16, 2)  # 2: normal/suspicious
+        node_model = NodeGNN(data.x.shape[1], 16, 2)  # Use shape from data
     node_logits = node_model(data.x, data.edge_index)
     node_probs = torch.sigmoid(node_logits)
     node_preds = (node_probs[:, 1] > 0.8).int()  # threshold for suspicious
 
     # Edge classification (e.g., fraudulent transaction)
     if edge_model is None:
-        edge_model = EdgeGNN(node_features.shape[1], edge_features.shape[1], 16, 2)
+        edge_model = EdgeGNN(data.x.shape[1], data.edge_attr.shape[1], 16, 2)
     edge_logits = edge_model(data.x, data.edge_index, data.edge_attr)
     edge_probs = torch.sigmoid(edge_logits)
     edge_preds = (edge_probs[:, 1] > 0.8).int()
@@ -130,13 +128,13 @@ def predict_fraud(G: nx.DiGraph, known_vpas=None, node_model=None, edge_model=No
     # Fuzzy VPA spoof detection
     vpa_spoof_flags = {}
     for node, idx in node_id_map.items():
-        vpa = G.nodes[node].get('vpa', '')
+        vpa = data.x[idx, 4].item()  # Assuming the 5th feature is vpa
         vpa_spoof_flags[node] = fuzzy_vpa_score(vpa, known_vpas)
 
     # Risk scores (0-1) for each transaction (edge)
     risk_scores = edge_probs[:, 1].detach().numpy()
-    fraud_edges = [e for i, e in enumerate(G.edges()) if edge_preds[i]]
-    suspicious_nodes = [n for i, n in enumerate(G.nodes()) if node_preds[i]]
+    fraud_edges = [e for i, e in enumerate(data.edge_index.T) if edge_preds[i]]
+    suspicious_nodes = [n for i, n in enumerate(data.x) if node_preds[i]]
     spoofed_vpas = [n for n, flag in vpa_spoof_flags.items() if flag]
 
     return {
@@ -231,17 +229,19 @@ def detect_qr_swap_fraud(G: nx.DiGraph, shopkeeper_node: str, current_timestamp:
 # -----------------------------
 if __name__ == "__main__":
     # --- Original GNN prediction example ---
-    G_gnn = nx.DiGraph()
-    G_gnn.add_node('A', vpa='merchant@upi', account_age=2, is_verified=True)
-    G_gnn.add_node('B', vpa='user1@upi', account_age=0.1, is_verified=False)
-    G_gnn.add_node('C', vpa='user2@upi', account_age=0.2, is_verified=False)
-    G_gnn.add_edge('B', 'A', amount=1000, timestamp=1667281800, psp_flag=0, type=1)
-    G_gnn.add_edge('C', 'A', amount=500, timestamp=1667281801, psp_flag=0, type=1)
-    G_gnn.add_edge('A', 'B', amount=100, timestamp=1667281802, psp_flag=1, type=2)
-    known_vpas = ['merchant@upi']
+    # Create a dummy PyG Data object with the correct feature shapes
+    # 3 nodes, 10 features each
+    node_features = torch.randn(3, 10) 
+    # 3 edges
+    edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long)
+    # 3 edges, 4 features each
+    edge_features = torch.randn(3, 4)
+
+    data = Data(x=node_features, edge_index=edge_index, edge_attr=edge_features)
 
     print("--- GNN Fraud Prediction ---")
-    result = predict_fraud(G_gnn, known_vpas)
+    # We pass the Data object directly now
+    result = predict_fraud(data)
     print(result)
     print("-" * 20)
 

@@ -64,10 +64,36 @@ def prepare_data(input_path='transactions_synthetic.csv', output_dir='data/'):
     account_age = (df['Unix_Timestamp'].max() - first_tx_time) / (3600*24) # in days
     account_age = account_age.rename('account_age_days')
 
+    # --- Bust-Out Fraud Feature Engineering ---
+    # Historical transaction frequency (transactions per day)
+    tx_counts = df.groupby('Sender_UPI_ID').size()
+    historical_tx_frequency = tx_counts / (account_age.loc[tx_counts.index] + 1) # Add 1 to avoid division by zero
+    historical_tx_frequency = historical_tx_frequency.rename('historical_tx_frequency')
+
+    # Inflow spike: Compare latest day's inflow to historical average
+    df['date'] = df['Timestamp'].dt.date
+    daily_inflow = df.groupby(['Receiver_UPI_ID', 'date'])['Amount_INR'].sum().reset_index()
+    historical_avg_inflow = daily_inflow.groupby('Receiver_UPI_ID')['Amount_INR'].mean().rename('historical_avg_daily_inflow')
+    
+    # Correctly get the last inflow amount per user without creating a multi-index
+    latest_day_inflow = daily_inflow.groupby('Receiver_UPI_ID').last()['Amount_INR']
+    inflow_spike_ratio = (latest_day_inflow / (historical_avg_inflow + 1e-6)).rename('inflow_spike_ratio')
+
+    # Fund dispersal velocity (average time to send money after receiving)
+    # This is a complex feature, approximating by comparing send/receive timestamps
+    received_times = df.groupby('Receiver_UPI_ID')['Unix_Timestamp'].min()
+    sent_times = df.groupby('Sender_UPI_ID')['Unix_Timestamp'].min()
+    
+    # Ensure we are subtracting correctly and handle cases where users only send or receive
+    dispersal_time = (sent_times - received_times).rename('fund_dispersal_velocity_seconds')
+
     # Merge features into the nodes dataframe
     nodes_df = nodes_df.merge(sender_stats, left_on='UPI_ID', right_index=True, how='left')
     nodes_df = nodes_df.merge(receiver_stats, left_on='UPI_ID', right_index=True, how='left')
     nodes_df = nodes_df.merge(account_age, left_on='UPI_ID', right_index=True, how='left')
+    nodes_df = nodes_df.merge(historical_tx_frequency, left_on='UPI_ID', right_index=True, how='left')
+    nodes_df = nodes_df.merge(inflow_spike_ratio, left_on='UPI_ID', right_index=True, how='left')
+    nodes_df = nodes_df.merge(dispersal_time, left_on='UPI_ID', right_index=True, how='left')
     nodes_df.fillna(0, inplace=True) # Fill NaNs for users who only send or only receive
 
     # Add suspicious flag
